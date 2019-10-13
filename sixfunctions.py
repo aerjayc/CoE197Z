@@ -1,85 +1,74 @@
 import pandas as pd
-
 import numpy as np
 
 from numpy import genfromtxt
-
 from sklearn import preprocessing
 
 import matplotlib.pyplot as plt
 import string
 from keras import backend as K
+
+
 #Given the dataframe and the column it replaces all zero nonavailable values with the mean
 def clean_data_with_mean(data, column):
-   
     replace_map = {column:{0:data[column].mean()}}
     # print(replace_map)
-    data.replace(replace_map, inplace = True)
+    data.replace(replace_map, inplace=True)
     return data
-    
+
+
 def load_train(path,path2, do_not_include, do_not_one_hot, clean_up, do_not_include_tent, do_not_include_temp):
     ###Data Preprocessing
     data = pd.read_csv(path)
     labels = pd.read_csv(path2)
+
+    # join data and labels
     data = data.join(labels.set_index('id'), on = 'id')
-    append_data = data.loc[data['status_group'] == 'functional needs repair']
-    
-    # print(data)
-    # data = pd.concat([data, append_data], ignore_index = True)
-    # data.drop(data.tail(7).index,inplace = True)
+
+    # shuffle data
     data = data.sample(frac=1).reset_index(drop=True)
-    # print(data)
-    # print("HELPE")
+    
+    # onehot encode the labels
     y = pd.concat([data['id'], data['status_group']], axis = 1)
-    # print(y)
-    # print(y.shape)    
-    
     y = pd.get_dummies(y, columns=[y.columns[1]], prefix = [y.columns[1]])
-    
-    y = y.drop(columns = 'id')
-    
-    y = y.to_numpy()
+    y = y.drop(columns = 'id').to_numpy()
     data = data.drop(columns = 'status_group')
-    for i,v in enumerate(clean_up):
+
+    for col in clean_up:
         print("About to clean up")
-        data = clean_data_with_mean(data,v)
+        data = clean_data_with_mean(data,col)
 
-
-    #Drop values ot to be used
+    #Drop values not to be used
     data = data.drop(columns = do_not_include)
     data = data.drop(columns = 'id')
     data = data.drop(columns = do_not_include_tent)
     data = data.drop(columns = do_not_include_temp)
 
+    pd.options.mode.chained_assignment = None
     for i in range(len(data['date_recorded'])):
         data['date_recorded'][i] = int(data['date_recorded'][i].replace("-","")[2:6])
-    
-    
+
     #Turn the rest into one hot
-    for i,w in enumerate(data.columns):
-        # print("Before: ",len(data.columns),w)
-        if w not in do_not_one_hot:
+    for col in data.columns:
+        if col not in do_not_one_hot:
             prev = len(data.columns)
-            data = pd.get_dummies(data, columns=[w], prefix = [w],dummy_na = True)
+            data = pd.get_dummies(data, columns=[col], prefix=[col], dummy_na=True)
             now = len(data.columns)
-            print("Expanded",w,"Change",prev,now)
-        # print("After: ",len(data.columns),w)
+            print("Expanded",col,"Change",prev,now)
 
     train_col = data.columns
-    
-    # print(data.columns,"X_test")
 
     x = data.to_numpy()
 
     #Normalize
     min_max_scaler = preprocessing.MinMaxScaler()
-
     x = min_max_scaler.fit_transform(x)
 
     try:
         del data
     except:
         pass
+
     return x, train_col, y
 
 
@@ -88,30 +77,29 @@ def load_x_test(path, train_col, do_not_include, do_not_one_hot, clean_up, do_no
     ###Data Preprocessing
     data = pd.read_csv(path)
     
-    for i,v in enumerate(clean_up):
-        data = clean_data_with_mean(data,v)
+    for col in clean_up:
+        data = clean_data_with_mean(data, col)
 
     data_id = data['id']
     #Drop values ot to be used
     data = data.drop(columns = do_not_include)
     data = data.drop(columns = 'id')
     
-    
+    pd.options.mode.chained_assignment = None
     for i in range(len(data['date_recorded'])):
         data['date_recorded'][i] = int(data['date_recorded'][i].replace("-","")[2:6])
-        
         
     data = data.drop(columns = do_not_include_tent)
     data = data.drop(columns = do_not_include_temp)
 
     #Turn the rest into one hot
-    for i,w in enumerate(data.columns):
+    for col in data.columns:
         # print("Before: ",len(data.columns),w)
-        if w not in do_not_one_hot:
+        if col not in do_not_one_hot:
             prev = len(data.columns)
-            data = pd.get_dummies(data, columns=[w], prefix = [w],dummy_na = True)
+            data = pd.get_dummies(data, columns=[col], prefix = [col],dummy_na = True)
             now = len(data.columns)
-            print("Expanded",w,"Change",prev,now)
+            print("Expanded",col,"Change",prev,now)
 
     test_col = data.columns
     
