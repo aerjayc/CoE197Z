@@ -16,6 +16,18 @@ def clean_data_with_mean(data, column):
     data.replace(replace_map, inplace=True)
     return data
 
+def date_to_cyclic(data):
+    # For date_recorder, convert to three columns, 2 for cyclical day of year recorded and the year recorded
+    # https://www.avanwyk.com/encoding-cyclical-features-for-deep-learning/
+    data["date_recorded"] = pd.to_datetime(data["date_recorded"], format="%Y-%m-%d")
+    data["day_of_year_recorded"] = data["date_recorded"].apply(lambda x: x.timetuple().tm_yday)
+
+    data["year_recorded"] = data["date_recorded"].apply(lambda x: x.year)
+    data["doy_recorded_sin"] = data["day_of_year_recorded"].apply(lambda x: np.sin(2 * np.pi * x/365.0))
+    data["doy_recorded_cos"] = data["day_of_year_recorded"].apply(lambda x: np.cos(2 * np.pi * x/365.0))
+    data = data.drop(["date_recorded", "day_of_year_recorded"], axis='columns')
+
+    return data
 
 def load_train(path,path2, do_not_include, do_not_one_hot, clean_up, do_not_include_tent, do_not_include_temp):
     ###Data Preprocessing
@@ -44,9 +56,7 @@ def load_train(path,path2, do_not_include, do_not_one_hot, clean_up, do_not_incl
     data = data.drop(columns = do_not_include_tent)
     data = data.drop(columns = do_not_include_temp)
 
-    pd.options.mode.chained_assignment = None
-    for i in range(len(data['date_recorded'])):
-        data['date_recorded'][i] = int(data['date_recorded'][i].replace("-","")[2:6])
+    data = date_to_cyclic(data)
 
     #Turn the rest into one hot
     for col in data.columns:
