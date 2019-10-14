@@ -8,6 +8,8 @@ import matplotlib.pyplot as plt
 import string
 from keras import backend as K
 
+from sklearn.preprocessing import OneHotEncoder
+
 
 #Given the dataframe and the column it replaces all zero nonavailable values with the mean
 def clean_data_with_mean(data, column):
@@ -59,12 +61,24 @@ def load_train(path,path2, do_not_include, do_not_one_hot, clean_up, do_not_incl
     data = date_to_cyclic(data)
 
     #Turn the rest into one hot
+    print("one-hot encoding:")
+    encoder = OneHotEncoder(sparse=False, categories='auto', handle_unknown='ignore')
     for col in data.columns:
+        if col in ['public_meeting', 'permit']:
+            data[col] = data[col].fillna(False)
         if col not in do_not_one_hot:
-            prev = len(data.columns)
-            data = pd.get_dummies(data, columns=[col], prefix=[col], dummy_na=True)
-            now = len(data.columns)
-            print("Expanded",col,"Change",prev,now)
+            print(f"\t{col}:", end='\t')
+
+            data[col] = data[col].fillna("")
+
+            onehot_cols = encoder.fit_transform(data[col].to_numpy().reshape(-1,1))
+            categories = encoder.categories_[0]
+            col_names = [f"{col}_{cat}" for cat in categories]  # names of new onehot columns
+
+            onehot_cols = pd.DataFrame(onehot_cols, columns=col_names)
+            data = pd.concat([data.drop([col], axis='columns'), onehot_cols], axis='columns')
+
+            print(str(len(categories)) + " categories")
 
     train_col = data.columns
 
