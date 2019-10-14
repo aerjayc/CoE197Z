@@ -35,31 +35,82 @@ def date_to_cyclic(data):
 
     return data
 
+def onehot_encode(train, test, cols):
+    print("one-hot encoding:")
+    from sklearn.preprocessing import OneHotEncoder
+    for col in cols:
+        print(f"\t{col}:", end='\t')
+
+        train[col] = train[col].fillna("")
+        test[col]  = test[col].fillna("")
+
+        encoder = OneHotEncoder(sparse=False, categories='auto', handle_unknown='ignore')
+        onehot_cols = encoder.fit_transform(train[col].to_numpy().reshape(-1,1))
+        categories = encoder.categories_[0]
+        col_names = [f"{col}_{cat}" for cat in categories]  # names of new onehot columns
+
+        onehot_cols = pd.DataFrame(onehot_cols, columns=col_names)
+        train = pd.concat([train.drop([col], axis='columns'), onehot_cols], axis='columns')
+
+        onehot_cols = encoder.transform(test[col].to_numpy().reshape(-1,1))
+        onehot_cols = pd.DataFrame(onehot_cols, columns=col_names)
+        test = pd.concat([test.drop([col], axis='columns'), onehot_cols], axis='columns')
+        
+        print(str(len(categories)) + " categories")
+    return train, test
+
+def nominal_to_binary(train, test, cols):
+    print("binary encoding:")
+    #!pip install category_encoders
+    from category_encoders import BinaryEncoder
+    import math
+    for col in cols:
+        n_unique = len(train[col].unique())
+        print('\t', col, end=" ")
+        print('\t', n_unique, " unique values", " -> ", end='')
+        print(math.ceil(math.log(n_unique, 2)), " columns")
+
+        encoder = BinaryEncoder(verbose=1, cols=[col])
+        train = encoder.fit_transform(train)
+        test  = encoder.transform(test)
+
+        i = 0
+        while(f"col_{i}" in train.columns):
+            rename_format = {f"col_{i}": f"{col}_col_{i}"}
+            train = train.rename(columns=rename_format)
+            test  = test.rename(columns=rename_format)
+            i += 1
+    return train, test
+
 def preprocess_data(train, labels, test,
                     drop_cols, unique_cols, binary_cols, onehot_cols, scale_cols):
     # Drop irrelevant/redundant columns
     print(f"dropping: {drop_cols}")
     train = train.drop(drop_cols, axis='columns')
-    #test  = test.drop(drop_cols, axis='columns')
+    test  = test.drop(drop_cols, axis='columns')
 
     # Onehot Encoding (train labels)
     labels = labels.pop('status_group').values
     labels = pd.get_dummies(labels)
 
     # Remove NaN's
+    print("removing NaN's:")
     for col in binary_cols:
+        print("\t", col)
         train[col] = train[col].fillna(False).astype('float64')
         test[col] = test[col].fillna(False).astype('float64')
 
     # Replace 0's with mean
+    print("replacing 0's with mean:")
     for col in {"population", "amount_tsh", "construction_year"}:
-        print("CLEANING ",col)
+        print("\t", col)
         train = clean_data_with_mean(train,col)
+        test  = clean_data_with_mean(test,col)
     
     # Cyclic Encoding
-    print("cyclic encoding:\n\tdate_recorded -> (doy_recorded_sin, doy_recorded_cos)")
+    print("cyclic encoding:\n\tdate_recorded -> (doy_recorded_sin, doy_recorded_cos), year_recorded")
     train = date_to_cyclic(train)
-    #test = date_to_cyclic(test)
+    test = date_to_cyclic(test)
 
     # Normalization
     print("Normalization:")
@@ -68,49 +119,17 @@ def preprocess_data(train, labels, test,
     for col in scale_cols:
         print(f"\t{col} [{min(train[col]), max(train[col])}]", end=" -> ")
         train[col] = scaler.fit_transform(train[col].to_numpy().reshape(-1,1))
-        #test[col]  = scaler.transform(test[col].to_numpy().reshape(-1,1))
+        test[col]  = scaler.transform(test[col].to_numpy().reshape(-1,1))
         print(f"[{min(train[col]), max(train[col])}]")
 
     # Onehot Encoding
-    data = train
-    print("one-hot encoding:")
-    encoder = OneHotEncoder(sparse=False, categories='auto', handle_unknown='ignore')
-    for col in onehot_cols:
-        print(f"\t{col}:", end='\t')
-
-        data[col] = data[col].fillna("")
-
-        onehot_cols = encoder.fit_transform(data[col].to_numpy().reshape(-1,1))
-        categories = encoder.categories_[0]
-        col_names = [f"{col}_{cat}" for cat in categories]  # names of new onehot columns
-
-        onehot_cols = pd.DataFrame(onehot_cols, columns=col_names)
-        data = pd.concat([data.drop([col], axis='columns'), onehot_cols], axis='columns')
-
-        print(str(len(categories)) + " categories")
+    train, test = onehot_encode(train, test, onehot_cols)
 
     # Binary Encoding
-    print("BINARY ENCODING:")
-    import math
-    #!pip install category_encoders
-    from category_encoders import BinaryEncoder
-    for col in unique_cols:
-        n_unique = len(data[col].unique())
-        print('\t', col, end=" ")
-        print('\t', n_unique, " unique values", " -> ", end='')
-        print(math.ceil(math.log(n_unique, 2)), " columns")
+    print("Binary Encoding:")
+    train, test = nominal_to_binary(train, test, unique_cols)
 
-        encoder = BinaryEncoder(verbose=1, cols=[col])
-        data = encoder.fit_transform(data)
-
-        i = 0
-        while(f"col_{i}" in data.columns):
-            rename_format = {f"col_{i}": f"{col}_col_{i}"}
-            data = data.rename(columns=rename_format)
-            i += 1
-    train = data
-
-    return train, labels
+    return train, labels, test
 
 def load_train(path,path2, do_not_include, do_not_one_hot, clean_up, do_not_include_tent,
                do_not_include_temp, unique_cols):
