@@ -13,8 +13,12 @@ from sklearn.preprocessing import OneHotEncoder
 
 #Given the dataframe and the column it replaces all zero nonavailable values with the mean
 def clean_data_with_mean(data, column):
-    replace_map = {column:{0:data[column].mean()}}
-    # print(replace_map)
+    replace_map = {column:{0:np.nan}}
+    data.replace(replace_map, inplace=True)
+
+    mean = data[column].mean()
+    data[column] = data[column].fillna(0)
+    replace_map = {column:{0:mean}}
     data.replace(replace_map, inplace=True)
     return data
 
@@ -32,7 +36,7 @@ def date_to_cyclic(data):
     return data
 
 def preprocess_data(train, labels, test,
-                    drop_cols, unique_cols, onehot_cols, scale_cols):
+                    drop_cols, unique_cols, binary_cols, onehot_cols, scale_cols):
     # Drop irrelevant/redundant columns
     print(f"dropping: {drop_cols}")
     train = train.drop(drop_cols, axis='columns')
@@ -41,22 +45,31 @@ def preprocess_data(train, labels, test,
     # Onehot Encoding (train labels)
     labels = labels.pop('status_group').values
     labels = pd.get_dummies(labels)
-    y = labels.to_numpy().astype('float32')
 
     # Remove NaN's
-    train["permit"] = train["permit"].fillna(False).astype(int)
-    train["public_meeting"] = train["public_meeting"].fillna(False).astype(int)
-    #test["permit"] = test["permit"].fillna(False).astype(int)
-    #test["public_meeting"] = test["public_meeting"].fillna(False).astype(int)
+    for col in binary_cols:
+        train[col] = train[col].fillna(False).astype('float64')
+        test[col] = test[col].fillna(False).astype('float64')
 
     # Replace 0's with mean
-    train = clean_data_with_mean(train,'population')
-    train = clean_data_with_mean(train,'amount_tsh')
+    for col in {"population", "amount_tsh", "construction_year"}:
+        print("CLEANING ",col)
+        train = clean_data_with_mean(train,col)
     
     # Cyclic Encoding
     print("cyclic encoding:\n\tdate_recorded -> (doy_recorded_sin, doy_recorded_cos)")
     train = date_to_cyclic(train)
     #test = date_to_cyclic(test)
+
+    # Normalization
+    print("Normalization:")
+    from sklearn.preprocessing import MinMaxScaler, StandardScaler
+    scaler = StandardScaler()
+    for col in scale_cols:
+        print(f"\t{col} [{min(train[col]), max(train[col])}]", end=" -> ")
+        train[col] = scaler.fit_transform(train[col].to_numpy().reshape(-1,1))
+        #test[col]  = scaler.transform(test[col].to_numpy().reshape(-1,1))
+        print(f"[{min(train[col]), max(train[col])}]")
 
     # Onehot Encoding
     data = train
@@ -97,15 +110,7 @@ def preprocess_data(train, labels, test,
             i += 1
     train = data
 
-    train_col = train.columns
-
-    x = train.to_numpy().astype('float32')
-
-    #Normalize
-    min_max_scaler = preprocessing.MinMaxScaler()
-    x = min_max_scaler.fit_transform(x)
-
-    return x, train_col, y
+    return train, labels
 
 def load_train(path,path2, do_not_include, do_not_one_hot, clean_up, do_not_include_tent,
                do_not_include_temp, unique_cols):
