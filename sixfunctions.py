@@ -82,8 +82,32 @@ def nominal_to_binary(train, test, cols):
             i += 1
     return train, test
 
-def preprocess_data(train, labels, test,
-                    drop_cols, unique_cols, binary_cols, onehot_cols, scale_cols):
+def preprocess_data(train, labels, test, drop_cols=None, unique_cols=None,
+                    binary_cols=None, onehot_cols=None, scale_cols=None):
+    # sets of columns
+    if not drop_cols:
+        drop_cols = {'id', 'num_private',
+                    'quality_group',   # exact duplicate of quality
+                    'recorded_by'}     # uniform value
+    if not unique_cols:
+        unique_cols = { 'funder',       # 1898 unique values
+                        'ward',         # 2092 unique values
+                        'installer',    # 2146 unique values
+                        'scheme_name',  # 2697 unique values
+                        'subvillage',   # 19288 unique values
+                        'wpt_name' }    # 37400 unique values
+    if not binary_cols:    
+        binary_cols = {"permit", "public_meeting"}
+    object_cols = set(train.select_dtypes(include=['object']).columns) - drop_cols
+    if not onehot_cols:
+        onehot_cols = ((((object_cols | {'region_code', 'district_code'})
+                    - {'date_recorded', 'permit', 'public_meeting'})
+                    - unique_cols) - drop_cols)
+    if not scale_cols:
+        scale_cols  = (((((set(train.select_dtypes(include=['number']).columns)
+                    - onehot_cols) - unique_cols) - binary_cols) - drop_cols)
+                    | {"year_recorded"})
+
     # Drop irrelevant/redundant columns
     print(f"dropping: {drop_cols}")
     train = train.drop(drop_cols, axis='columns')
