@@ -31,7 +31,8 @@ def date_to_cyclic(data):
 
     return data
 
-def load_train(path,path2, do_not_include, do_not_one_hot, clean_up, do_not_include_tent, do_not_include_temp):
+def load_train(path,path2, do_not_include, do_not_one_hot, clean_up, do_not_include_tent,
+               do_not_include_temp, unique_cols):
     ###Data Preprocessing
     data = pd.read_csv(path)
     labels = pd.read_csv(path2)
@@ -79,6 +80,26 @@ def load_train(path,path2, do_not_include, do_not_one_hot, clean_up, do_not_incl
             data = pd.concat([data.drop([col], axis='columns'), onehot_cols], axis='columns')
 
             print(str(len(categories)) + " categories")
+
+    # Binary Encoding
+    print("BINARY ENCODING:")
+    import math
+    #!pip install category_encoders
+    from category_encoders import BinaryEncoder
+    for col in unique_cols:
+        n_unique = len(data[col].unique())
+        print('\t', col, end=" ")
+        print('\t', n_unique, " unique values", " -> ", end='')
+        print(math.ceil(math.log(n_unique, 2)), " columns")
+
+        encoder = BinaryEncoder(verbose=1, cols=[col])
+        data = encoder.fit_transform(data)
+
+        i = 0
+        while(f"col_{i}" in data.columns):
+            rename_format = {f"col_{i}": f"{col}_col_{i}"}
+            data = data.rename(columns=rename_format)
+            i += 1
 
     train_col = data.columns
 
