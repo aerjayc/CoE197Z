@@ -31,6 +31,82 @@ def date_to_cyclic(data):
 
     return data
 
+def preprocess_data(train, labels, test,
+                    drop_cols, unique_cols, onehot_cols, scale_cols):
+    # Drop irrelevant/redundant columns
+    print(f"dropping: {drop_cols}")
+    train = train.drop(drop_cols, axis='columns')
+    #test  = test.drop(drop_cols, axis='columns')
+
+    # Onehot Encoding (train labels)
+    labels = labels.pop('status_group').values
+    labels = pd.get_dummies(labels)
+    y = labels.to_numpy().astype('float32')
+
+    # Remove NaN's
+    train["permit"] = train["permit"].fillna(False).astype(int)
+    train["public_meeting"] = train["public_meeting"].fillna(False).astype(int)
+    #test["permit"] = test["permit"].fillna(False).astype(int)
+    #test["public_meeting"] = test["public_meeting"].fillna(False).astype(int)
+
+    # Replace 0's with mean
+    train = clean_data_with_mean(train,'population')
+    train = clean_data_with_mean(train,'amount_tsh')
+    
+    # Cyclic Encoding
+    print("cyclic encoding:\n\tdate_recorded -> (doy_recorded_sin, doy_recorded_cos)")
+    train = date_to_cyclic(train)
+    #test = date_to_cyclic(test)
+
+    # Onehot Encoding
+    data = train
+    print("one-hot encoding:")
+    encoder = OneHotEncoder(sparse=False, categories='auto', handle_unknown='ignore')
+    for col in onehot_cols:
+        print(f"\t{col}:", end='\t')
+
+        data[col] = data[col].fillna("")
+
+        onehot_cols = encoder.fit_transform(data[col].to_numpy().reshape(-1,1))
+        categories = encoder.categories_[0]
+        col_names = [f"{col}_{cat}" for cat in categories]  # names of new onehot columns
+
+        onehot_cols = pd.DataFrame(onehot_cols, columns=col_names)
+        data = pd.concat([data.drop([col], axis='columns'), onehot_cols], axis='columns')
+
+        print(str(len(categories)) + " categories")
+
+    # Binary Encoding
+    print("BINARY ENCODING:")
+    import math
+    #!pip install category_encoders
+    from category_encoders import BinaryEncoder
+    for col in unique_cols:
+        n_unique = len(data[col].unique())
+        print('\t', col, end=" ")
+        print('\t', n_unique, " unique values", " -> ", end='')
+        print(math.ceil(math.log(n_unique, 2)), " columns")
+
+        encoder = BinaryEncoder(verbose=1, cols=[col])
+        data = encoder.fit_transform(data)
+
+        i = 0
+        while(f"col_{i}" in data.columns):
+            rename_format = {f"col_{i}": f"{col}_col_{i}"}
+            data = data.rename(columns=rename_format)
+            i += 1
+    train = data
+
+    train_col = train.columns
+
+    x = train.to_numpy().astype('float32')
+
+    #Normalize
+    min_max_scaler = preprocessing.MinMaxScaler()
+    x = min_max_scaler.fit_transform(x)
+
+    return x, train_col, y
+
 def load_train(path,path2, do_not_include, do_not_one_hot, clean_up, do_not_include_tent,
                do_not_include_temp, unique_cols):
     ###Data Preprocessing
